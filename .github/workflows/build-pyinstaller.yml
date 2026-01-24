@@ -81,12 +81,15 @@ jobs:
             --clean --noconfirm \
             linux_do_gui.py
 
-      - name: Package macOS app
+      - name: Package macOS app as DMG
         if: matrix.platform == 'macOS'
         run: |
           cd dist
-          zip -r ${{ matrix.artifact_name }}.zip ${{ matrix.artifact_name }}.app
-          rm -rf ${{ matrix.artifact_name }}.app
+          mkdir -p dmg_contents
+          mv ${{ matrix.artifact_name }}.app dmg_contents/
+          ln -s /Applications dmg_contents/Applications
+          hdiutil create -volname "${{ matrix.artifact_name }}" -srcfolder dmg_contents -ov -format UDZO ${{ matrix.artifact_name }}.dmg
+          rm -rf dmg_contents
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
