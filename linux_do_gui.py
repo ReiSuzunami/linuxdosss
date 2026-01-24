@@ -15,9 +15,15 @@ Linux.do 论坛刷帖助手 v8.3
 """
 
 import sys, os, random, time, json, threading
+import urllib.request
+import urllib.error
 from datetime import datetime, date
 import tkinter as tk
 from tkinter import ttk, scrolledtext, messagebox
+
+# 版本信息
+VERSION = "8.3"
+GITHUB_REPO = "icysaintdx/linuxdosss"
 
 # 托盘支持
 try:
@@ -1209,7 +1215,7 @@ class Bot:
 class GUI:
     def __init__(s):
         s.rt = tk.Tk()
-        s.rt.title("Linux.do 刷帖助手 v8.3")
+        s.rt.title(f"Linux.do 刷帖助手 v{VERSION}")
         s.rt.geometry("700x950")
         s.rt.minsize(650, 850)  # 设置最小窗口大小
         s.rt.configure(bg="#1a1a2e")
@@ -1252,6 +1258,77 @@ class GUI:
 
         # 窗口关闭时的处理
         s.rt.protocol("WM_DELETE_WINDOW", s._on_close_window)
+
+        # 启动后检查更新（延迟执行，避免阻塞UI）
+        s.rt.after(1000, s._check_update)
+
+    def _check_update(s):
+        """检查版本更新"""
+
+        def check():
+            try:
+                # 获取 GitHub Releases 最新版本
+                url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+                req = urllib.request.Request(
+                    url, headers={"User-Agent": "LinuxDoHelper"}
+                )
+                with urllib.request.urlopen(req, timeout=10) as response:
+                    data = json.loads(response.read().decode("utf-8"))
+                    latest_version = data.get("tag_name", "").lstrip("v")
+                    release_url = data.get("html_url", "")
+
+                    # 比较版本号
+                    if (
+                        latest_version
+                        and s._compare_versions(latest_version, VERSION) > 0
+                    ):
+                        # 有新版本，在主线程显示提示
+                        s.rt.after(
+                            0,
+                            lambda: s._show_update_dialog(latest_version, release_url),
+                        )
+            except Exception as e:
+                # 网络错误等，静默忽略
+                pass
+
+        # 在后台线程执行检查
+        threading.Thread(target=check, daemon=True).start()
+
+    def _compare_versions(s, v1, v2):
+        """比较版本号，返回 1 表示 v1 > v2，-1 表示 v1 < v2，0 表示相等"""
+        try:
+            parts1 = [int(x) for x in v1.split(".")]
+            parts2 = [int(x) for x in v2.split(".")]
+
+            # 补齐长度
+            while len(parts1) < len(parts2):
+                parts1.append(0)
+            while len(parts2) < len(parts1):
+                parts2.append(0)
+
+            for p1, p2 in zip(parts1, parts2):
+                if p1 > p2:
+                    return 1
+                elif p1 < p2:
+                    return -1
+            return 0
+        except:
+            return 0
+
+    def _show_update_dialog(s, latest_version, release_url):
+        """显示更新提示对话框"""
+        result = messagebox.askyesno(
+            "发现新版本",
+            f"🎉 发现新版本 v{latest_version}\n\n"
+            f"当前版本: v{VERSION}\n"
+            f"最新版本: v{latest_version}\n\n"
+            "是否打开下载页面？",
+            icon="info",
+        )
+        if result and release_url:
+            import webbrowser
+
+            webbrowser.open(release_url)
 
     def _init_tray(s):
         """初始化系统托盘"""
@@ -1298,7 +1375,7 @@ class GUI:
         s.tray_icon.icon = create_tray_image(color)
 
         # 更新提示文字
-        tooltip = f"Linux.do 刷帖助手 v8.3 - {status}\n"
+        tooltip = f"Linux.do 刷帖助手 v{VERSION} - {status}\n"
 
         if s.bot and s.bot.start_time:
             # 计算用时
@@ -1435,7 +1512,7 @@ class GUI:
 
         title_label = tk.Label(
             title_left,
-            text="Linux.do 刷帖助手 v8.3",
+            text=f"Linux.do 刷帖助手 v{VERSION}",
             font=("Microsoft YaHei UI", 11, "bold"),
             bg="#0f3460",
             fg="#ffffff",
@@ -1810,8 +1887,8 @@ class GUI:
         param_row1 = tk.Frame(param, bg="#1a1a2e")
         param_row1.pack(fill=tk.X, pady=2)
 
-        # 自动点赞开关
-        s.enable_like_var = tk.BooleanVar(value=True)
+        # 自动点赞开关（默认关闭）
+        s.enable_like_var = tk.BooleanVar(value=False)
         tk.Checkbutton(
             param_row1,
             text="自动点赞",
@@ -1833,9 +1910,9 @@ class GUI:
             side=tk.LEFT, padx=(0, 15)
         )
 
-        # 自动回复开关
-        s.enable_reply_var = tk.BooleanVar(value=True)
-        tk.Checkbutton(
+        # 自动回复开关（默认关闭）
+        s.enable_reply_var = tk.BooleanVar(value=False)
+        s.reply_checkbox = tk.Checkbutton(
             param_row1,
             text="自动回复",
             variable=s.enable_reply_var,
@@ -1843,7 +1920,9 @@ class GUI:
             fg="#eaeaea",
             selectcolor="#0f3460",
             activebackground="#1a1a2e",
-        ).pack(side=tk.LEFT, padx=(0, 5))
+            command=s._on_reply_toggle,
+        )
+        s.reply_checkbox.pack(side=tk.LEFT, padx=(0, 5))
 
         tk.Label(param_row1, text="回复率:", bg="#1a1a2e", fg="#eaeaea").pack(
             side=tk.LEFT
@@ -1948,6 +2027,24 @@ class GUI:
             if cat["n"] == name:
                 cat["e"] = var.get()
                 break
+
+    def _on_reply_toggle(s):
+        """自动回复开关切换时的处理"""
+        if s.enable_reply_var.get():
+            # 用户启用了自动回复，显示风险提醒
+            result = messagebox.askokcancel(
+                "风险提醒",
+                "⚠️ 自动回复功能风险提示\n\n"
+                "据社区反馈，L站可能存在检测自动回复的机制：\n"
+                "• 曾有用户因自动回复被举报\n"
+                "• 可能影响账号信任等级\n"
+                "• 建议仅在必要时谨慎使用\n\n"
+                "是否确定要启用自动回复功能？",
+                icon="warning",
+            )
+            if not result:
+                # 用户取消，恢复为未选中状态
+                s.enable_reply_var.set(False)
 
     def _update_info(s, info, is_final=False):
         """更新用户信息显示"""
