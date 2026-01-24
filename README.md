@@ -115,7 +115,11 @@
 
 从 [Releases](https://github.com/icysaintdx/linuxdosss/releases) 下载最新版本的 exe 文件，双击运行即可。
 
-### 方式二：从源码运行
+### 方式二：GitHub Actions 定时运行（全自动）
+
+无需本地运行，Fork 仓库后配置 Secrets 即可自动定时执行。详见下方 [GitHub Actions 定时任务](#github-actions-定时任务) 章节。
+
+### 方式三：从源码运行
 
 #### 环境要求
 
@@ -252,6 +256,115 @@ python linux_do_gui.py
 3. **风险提示**：使用自动化工具存在一定风险，请自行承担
 4. **登录安全**：程序不会保存您的账号密码，登录在浏览器中完成
 
+## GitHub Actions 定时任务
+
+支持通过 GitHub Actions 实现全自动定时运行，无需本地电脑保持开机。
+
+### 功能特点
+
+- **全自动运行**：配置一次，每天自动执行
+- **无需本地运行**：利用 GitHub 服务器运行
+- **私有仓库**：账号密码安全存储在 GitHub Secrets
+- **可自定义**：支持调整运行时间、浏览数量、点赞概率
+
+### 配置步骤
+
+#### 1. Fork 仓库
+
+点击本仓库右上角的 `Fork` 按钮，将仓库复制到你的账号下。
+
+#### 2. 设为私有（重要！）
+
+为保护你的账号信息，强烈建议将仓库设为私有：
+
+```
+Settings -> General -> Danger Zone -> Change visibility -> Make private
+```
+
+#### 3. 添加 Secrets
+
+在你 Fork 的仓库中添加账号密码：
+
+```
+Settings -> Secrets and variables -> Actions -> New repository secret
+```
+
+添加以下两个 Secret：
+
+| Name | Value |
+|------|-------|
+| `LINUXDO_USERNAME` | 你的 Linux.do 用户名 |
+| `LINUXDO_PASSWORD` | 你的 Linux.do 密码 |
+
+#### 4. 启用 Actions
+
+```
+Actions -> I understand my workflows, go ahead and enable them
+```
+
+#### 5. 完成
+
+配置完成后，定时任务会自动运行：
+- **每天北京时间 8:00** 自动运行一次
+- **每天北京时间 20:00** 自动运行一次
+
+也可以手动触发：`Actions -> Run Schedule -> Run workflow`
+
+### 自定义配置
+
+#### 修改运行时间
+
+编辑 `.github/workflows/run-schedule.yml` 文件中的 cron 表达式：
+
+```yaml
+schedule:
+  - cron: '0 0 * * *'   # UTC 0:00 = 北京时间 8:00
+  - cron: '0 12 * * *'  # UTC 12:00 = 北京时间 20:00
+```
+
+常用 cron 示例：
+
+| cron 表达式 | 说明 |
+|-------------|------|
+| `'0 0 * * *'` | 每天北京时间 8:00 |
+| `'0 8 * * *'` | 每天北京时间 16:00 |
+| `'0 0,12 * * *'` | 每天北京时间 8:00 和 20:00 |
+| `'0 0 * * 1-5'` | 工作日北京时间 8:00 |
+| `'0 0 * * 0'` | 每周日北京时间 8:00 |
+
+> 注意：GitHub Actions 使用 UTC 时间，北京时间 = UTC + 8 小时
+
+#### 修改浏览数量和点赞率
+
+手动触发时可以自定义参数，或修改 workflow 文件中的默认值。
+
+### 注意事项
+
+1. **私有仓库额度**：GitHub 私有仓库每月有 2000 分钟免费 Actions 额度
+2. **单次运行时间**：建议控制在 30 分钟以内
+3. **运行频率**：建议每天 1-2 次，避免过于频繁
+4. **账号安全**：Secrets 加密存储，只有你能访问
+
+### 无头版脚本
+
+`linux_do_headless.py` 是专为服务器/Actions 设计的无头版本：
+
+```bash
+# 命令行使用
+python linux_do_headless.py -u 用户名 -p 密码
+
+# 指定参数
+python linux_do_headless.py -u 用户名 -p 密码 --topics 50 --like-rate 20
+
+# 使用代理
+python linux_do_headless.py -u 用户名 -p 密码 --proxy 127.0.0.1:7897
+
+# 环境变量方式
+export LINUXDO_USERNAME="用户名"
+export LINUXDO_PASSWORD="密码"
+python linux_do_headless.py
+```
+
 ## macOS / Linux 版本
 
 由于 PyInstaller 不支持跨平台打包（Windows 上无法打包 macOS/Linux 版本），我创建了：
@@ -281,10 +394,15 @@ python3 build.py
 
 ```
 linuxdo/
-├── linux_do_gui.py           # 主程序
-├── build.py                  # 打包脚本
-├── README.md                 # 项目说明
-└── BUILD_GUIDE.md            # 打包指南
+├── linux_do_gui.py                          # GUI 版主程序
+├── linux_do_headless.py                     # 无头版脚本（用于 Actions/服务器）
+├── build.py                                 # 打包脚本
+├── requirements.txt                         # 依赖文件
+├── README.md                                # 项目说明
+├── BUILD_GUIDE.md                           # 打包指南
+└── .github/workflows/
+    ├── build-pyinstaller.yml                # 自动构建 workflow
+    └── run-schedule.yml                     # 定时运行 workflow
 ```
 
 ## 技术栈
